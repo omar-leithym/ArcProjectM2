@@ -1,0 +1,20 @@
+#-----------------------------------------------------------
+# Vivado v2018.2 (64-bit)
+# SW Build 2258646 on Thu Jun 14 20:03:12 MDT 2018
+# IP Build 2256618 on Thu Jun 14 22:10:49 MDT 2018
+# Start of session at: Sun Apr 13 16:38:14 2025
+# Process ID: 23136
+# Current directory: F:/VivadoProj/ArcProjM2
+# Command line: vivado.exe -gui_launcher_event rodinguilauncherevent23024 F:\VivadoProj\ArcProjM2\ArcProjM2.xpr
+# Log file: F:/VivadoProj/ArcProjM2/vivado.log
+# Journal file: F:/VivadoProj/ArcProjM2\vivado.jou
+#-----------------------------------------------------------
+start_gui
+open_project F:/VivadoProj/ArcProjM2/ArcProjM2.xpr
+update_compile_order -fileset sources_1
+file mkdir F:/VivadoProj/ArcProjM2/ArcProjM2.srcs/sim_1/new
+set_property SOURCE_SET sources_1 [get_filesets sim_1]
+close [ open F:/VivadoProj/ArcProjM2/ArcProjM2.srcs/sim_1/new/Simulation.v w ]
+add_files -fileset sim_1 F:/VivadoProj/ArcProjM2/ArcProjM2.srcs/sim_1/new/Simulation.v
+update_compile_order -fileset sim_1
+update_compile_order -fileset sim_1
