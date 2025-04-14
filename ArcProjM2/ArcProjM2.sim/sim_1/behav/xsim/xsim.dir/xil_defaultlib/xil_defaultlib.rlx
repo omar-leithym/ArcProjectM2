@@ -1,0 +1,7 @@
+0.6
+2018.2
+Jun 14 2018
+20:41:02
+F:/VivadoProj/ArcProjM2/ArcProjM2.sim/sim_1/behav/xsim/glbl.v,1529022456,verilog,,,,glbl,,,,,,,,
+F:/VivadoProj/ArcProjM2/ArcProjM2.srcs/sim_1/new/Simulation.v,1744588982,verilog,,,,Simulation,,,,,,,,
+F:/VivadoProj/ArcProjM2/ArcProjM2.srcs/sources_1/new/RSIC_pipeline.v,1744589278,verilog,,F:/VivadoProj/ArcProjM2/ArcProjM2.srcs/sim_1/new/Simulation.v,,ALU;ALU_CU;BCD;CU;DataMemory;Four_Digit_Seven_Segment_Driver_Optimized;ImmGen;InstructionMemory;NBitMux2x1;NBitRegister;NBitShiftLeft;RCA;RISCV_pipeline;RegFile;mux2x1,,,,,,,,
