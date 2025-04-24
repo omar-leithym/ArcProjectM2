@@ -63,22 +63,52 @@ module NBitShiftLeft #(parameter N=32) (
     assign out = in << 1;
 endmodule
 
-module ALU #(parameter N=32) (
-    input  wire [N-1:0] A,
-    input  wire [N-1:0] B,
-    input  wire [3:0]   ALUsel,  
-    output reg  [N-1:0] result,
-    output wire         zeroFlag
+module ALU(
+    input   wire [31:0] a, b,
+    input   wire [4:0]  shamt,
+    output  reg  [31:0] r,
+    output  wire        cf, zf, vf, sf,
+    input   wire [3:0]  alufn
 );
-    assign zeroFlag = (result == 0);
 
-    always @(*) begin
-        case(ALUsel)
-            4'b0000: result = A & B;      // AND
-            4'b0001: result = A | B;      // OR
-            4'b0010: result = A + B;      // ADD
-            4'b0110: result = A - B;      // SUB
-            default: result = 32'hDEAD_BEEF; 
+    wire [31:0] add, op_b;
+    wire [31:0] shift_left, shift_right, shift_right_arith;
+    assign op_b = (~b);
+    
+    assign {cf, add} = alufn[0] ? (a + op_b + 1'b1) : (a + b);
+    
+    assign zf = (add == 0);
+    assign sf = add[31];
+    assign vf = (a[31] ^ (op_b[31]) ^ add[31] ^ cf);
+    
+    wire[31:0] sh;
+    assign shift_left = a << shamt;
+    assign shift_right = a >> shamt;
+    assign shift_right_arith = $signed(a) >>> shamt;
+
+    always @ * begin
+        r = 0;
+        case (alufn)
+            // arithmetic
+            4'b0000 : r = add;              // ADD, ADDI
+            4'b0001 : r = add;              // SUB
+            4'b0011 : r = b;                // PASS B
+            // logic
+            4'b0100 : r = a | b;            // OR, ORI
+            4'b0101 : r = a & b;            // AND, ANDI
+            4'b0111 : r = a ^ b;            // XOR, XORI
+            // shift
+            4'b1000 : r = sh;               // SLL
+            4'b1001 : r = sh;               // SRL
+            4'b1010 : r = sh;               // SRA
+            // slt & sltu
+            4'b1101 : r = {31'b0,(sf != vf)}; // SLT, SLTI
+            4'b1111 : r = {31'b0,(~cf)};      // SLTU, SLTIU
+            // additional operations for LUI and AUIPC
+            4'b0010 : r = {b[19:0], 12'b0};   // LUI
+            4'b0110 : r = a + b;              // AUIPC
+            // default case
+            default : r = 0;
         endcase
     end
 endmodule
@@ -412,6 +442,29 @@ module HazardDetection(
     end
 endmodule
 
+module BranchingUnit(
+    input [2:0] funct3, input cf, zf, vf, sf, output reg Branch
+    );
+    
+    always@(*) begin
+        case(funct3)
+            3'b000: // beq
+                Branch = zf;
+            3'b001: // bne
+                Branch = ~zf;
+            3'b100: // blt
+                Branch = (sf != vf);
+            3'b101: // bge
+                Branch = (sf == vf);
+            3'b110: // bltu
+                Branch = ~cf;
+            3'b111: // bgeu
+                Branch = cf;
+            default: Branch = 1'b0;
+        endcase
+    end
+endmodule
+
 module RISCV_pipeline(
     input clk, 
     input reset, 
@@ -563,23 +616,27 @@ module RISCV_pipeline(
     wire [31:0] alu_input_B;
     wire [31:0] alu_in2;
     
-//    NBitMux2x1 #(32) mux_alu_src(
-//            .A(alu_input_B),
-//            .B(ID_EX_Imm),
-//            .S(ID_EX_ALUSrc),
-//            .C(alu_in2)
-//        );
     assign alu_in2 = ID_EX_ALUSrc ? ID_EX_Imm: alu_input_B;
     wire [31:0] alu_result;
-    wire zeroFlag;
-
+    wire zeroFlag, cFlag, vFlag, sFlag;
+//module ALU(
+//        input   wire [31:0] a, b,
+//        input   wire [4:0]  shamt,
+//        output  reg  [31:0] r,
+//        output  wire        cf, zf, vf, sf,
+//        input   wire [3:0]  alufn
+//    );
     
     ALU #(32) mainALU(
-        .A(alu_input_A),
-        .B(alu_in2),
-        .ALUsel(ALUsel),
-        .result(alu_result),
-        .zeroFlag(zeroFlag)
+        .a(alu_input_A),
+        .b(alu_in2),
+        .alufn(ALUsel),
+        .r(alu_result),
+        .zf(zeroFlag),
+        .cf(cFlag),
+        .vf(vFlag),
+        .sf(sFlag)
+        //.shamt(instruction[24:20]) need to get intstruction from ID_EX
     );
 
     // Compute branch target = ID_EX_PC + (Imm << 1)
