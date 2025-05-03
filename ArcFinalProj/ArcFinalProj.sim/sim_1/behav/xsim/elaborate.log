@@ -1,0 +1,12 @@
+Vivado Simulator 2018.2
+Copyright 1986-1999, 2001-2018 Xilinx, Inc. All Rights Reserved.
+Running: F:/Vivado/2018.2/bin/unwrapped/win64.o/xelab.exe -wto 4c62615f557642d496463e3abc81d29b --incr --debug typical --relax --mt 2 -L xil_defaultlib -L unisims_ver -L unimacro_ver -L secureip --snapshot Simulation_behav xil_defaultlib.Simulation xil_defaultlib.glbl -log elaborate.log 
+Using 2 slave threads.
+Starting static elaboration
+WARNING: [VRFC 10-2572] too many parameters for module instance mainALU [F:/VivadoProj/ArcFinalProj/ArcFinalProj.srcs/sources_1/new/RISCV_pipeline.v:623]
+ERROR: [VRFC 10-2538] module instantiation should have an instance name [F:/VivadoProj/ArcFinalProj/ArcFinalProj.srcs/sources_1/new/RISCV_pipeline.v:717]
+ERROR: [VRFC 10-2063] Module <NBitMux2x1> not found while processing module instance <mux_nextPC> [F:/VivadoProj/ArcFinalProj/ArcFinalProj.srcs/sources_1/new/RISCV_pipeline.v:719]
+ERROR: [VRFC 10-2063] Module <forwardingUnit> not found while processing module instance <myForwarder> [F:/VivadoProj/ArcFinalProj/ArcFinalProj.srcs/sources_1/new/RISCV_pipeline.v:769]
+ERROR: [VRFC 10-2063] Module <HazardDetection> not found while processing module instance <myHazardDetector> [F:/VivadoProj/ArcFinalProj/ArcFinalProj.srcs/sources_1/new/RISCV_pipeline.v:781]
+ERROR: [VRFC 10-2063] Module <Four_Digit_Seven_Segment_Driver_Optimized> not found while processing module instance <myDriver> [F:/VivadoProj/ArcFinalProj/ArcFinalProj.srcs/sources_1/new/RISCV_pipeline.v:836]
+ERROR: [XSIM 43-3322] Static elaboration of top level Verilog design unit(s) in library work failed.

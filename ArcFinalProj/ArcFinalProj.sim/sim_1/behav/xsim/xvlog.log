@@ -1,0 +1,23 @@
+INFO: [VRFC 10-2263] Analyzing Verilog file "F:/VivadoProj/ArcFinalProj/ArcFinalProj.srcs/sources_1/new/RISCV_pipeline.v" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module mux2x1
+INFO: [VRFC 10-311] analyzing module NBitMux2x1
+INFO: [VRFC 10-311] analyzing module NBitRegister
+INFO: [VRFC 10-311] analyzing module RCA
+INFO: [VRFC 10-311] analyzing module NBitShiftLeft
+INFO: [VRFC 10-311] analyzing module ALU
+INFO: [VRFC 10-311] analyzing module ALU_CU
+INFO: [VRFC 10-311] analyzing module ImmGen
+INFO: [VRFC 10-311] analyzing module CU
+INFO: [VRFC 10-311] analyzing module RegFile
+INFO: [VRFC 10-311] analyzing module BCD
+INFO: [VRFC 10-311] analyzing module Four_Digit_Seven_Segment_Driver_Optimized
+INFO: [VRFC 10-311] analyzing module DataMemory
+INFO: [VRFC 10-311] analyzing module InstructionMemory
+INFO: [VRFC 10-311] analyzing module forwardingUnit
+INFO: [VRFC 10-311] analyzing module HazardDetection
+INFO: [VRFC 10-311] analyzing module BranchingUnit
+INFO: [VRFC 10-311] analyzing module RISCV_pipeline
+INFO: [VRFC 10-2263] Analyzing Verilog file "F:/VivadoProj/ArcFinalProj/ArcFinalProj.srcs/sim_1/new/Simulation.v" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module Simulation
+INFO: [VRFC 10-2263] Analyzing Verilog file "F:/VivadoProj/ArcFinalProj/ArcFinalProj.sim/sim_1/behav/xsim/glbl.v" into library xil_defaultlib
+INFO: [VRFC 10-311] analyzing module glbl

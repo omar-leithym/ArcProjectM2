@@ -1,0 +1,10 @@
+# compile verilog/system verilog design source files
+verilog xil_defaultlib  \
+"../../../../ArcFinalProj.srcs/sources_1/new/RISCV_pipeline.v" \
+"../../../../ArcFinalProj.srcs/sim_1/new/Simulation.v" \
+
+# compile glbl module
+verilog xil_defaultlib "glbl.v"
+
+# Do not sort compile order
+nosort
