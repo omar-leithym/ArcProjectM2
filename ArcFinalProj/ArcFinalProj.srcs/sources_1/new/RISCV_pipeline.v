@@ -713,9 +713,9 @@ module RISCV_pipeline(
         .data_out (dataOut)
     );
 
-wire branch_taken;
-    BranchingUnit(.funct3(EX_MEM_funct3), .cf(EX_MEM_cFlag), .zf(EX_MEM_Zero), .vf(EX_MEM_vFlag), .sf(EX_MEM_sFlag), .Branch(branch_taken));
-    
+    wire branchOutput;
+    BranchingUnit myBranchUnit(.funct3(EX_MEM_funct3), .cf(EX_MEM_cFlag), .zf(EX_MEM_Zero), .vf(EX_MEM_vFlag), .sf(EX_MEM_sFlag), .Branch(branchOutput));
+    wire branch_taken = EX_MEM_Branch && branchOutput;
     NBitMux2x1 #(32) mux_nextPC(
         .A(pc_plus_4),
         .B(EX_MEM_BranchAddOut),
