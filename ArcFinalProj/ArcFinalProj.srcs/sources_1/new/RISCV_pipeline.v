@@ -132,6 +132,7 @@ module ALU(
 endmodule
 
 
+`timescale 1ns / 1ps
 module ALU_CU(
     input [2:0] inst14_12,
     input [1:0] ALUOp,
@@ -141,10 +142,16 @@ module ALU_CU(
 );
     always @(*) begin
         case(ALUOp)
-            2'b00: ALUsel = 5'b00000; // ADD
-            2'b01: ALUsel = 5'b00001; // SUB
+            // For load/store instructions: use ADD
+            2'b00: ALUsel = 5'b00000;
+            
+            // For branches: use SUB
+            2'b01: ALUsel = 5'b00001;
+            
+            // For R-type instructions, decode function fields
             2'b10: begin
                 if(inst25) begin
+                    // M-extension operations (MUL/DIV)
                     case(inst14_12)
                         3'b000: ALUsel = 5'b10000; // MUL
                         3'b001: ALUsel = 5'b10001; // MULH
@@ -157,19 +164,26 @@ module ALU_CU(
                         default: ALUsel = 5'b11111; 
                     endcase
                 end else begin
+                    // Standard ALU operations
                     case(inst14_12)
-                        3'b000: ALUsel = (inst30 ? 5'b00001 : 5'b00000); // SUB
-                        3'b111: ALUsel = 5'b00101; // AND
+                        3'b000: ALUsel = (inst30) ? 5'b00001 : 5'b00000; // SUB if inst30==1 else ADD
+                        3'b001: ALUsel = 5'b01000; // SLL
+                        3'b010: ALUsel = 5'b01101; // SLT
+                        3'b011: ALUsel = 5'b01111; // SLTU
+                        3'b100: ALUsel = 5'b00111; // XOR
+                        3'b101: ALUsel = (inst30) ? 5'b01010 : 5'b01001; // SRA if inst30 else SRL
                         3'b110: ALUsel = 5'b00100; // OR
-                        default: ALUsel = 5'b11111; 
+                        3'b111: ALUsel = 5'b00101; // AND
+                        default: ALUsel = 5'b11111;
                     endcase
                 end
             end
+            
+            // Default case
             default: ALUsel = 5'b11111;
         endcase
     end
 endmodule
-
 
 
 module ImmGen(
@@ -211,79 +225,153 @@ module ImmGen(
 endmodule
 
 
+`timescale 1ns / 1ps
+
 module CU(
     input [4:0] instBits,
-    output reg  Branch, 
-    output reg  MemRead, 
-    output reg  MemtoReg,
+    output reg Branch, 
+    output reg MemRead, 
+    output reg MemtoReg,
     output reg [1:0] ALUOp, 
-    output reg  memWrite, 
-    output reg  ALUSrc, 
-    output reg  RegWrite, Halt
+    output reg memWrite, 
+    output reg ALUSrc, 
+    output reg RegWrite,
+    output reg Halt
 );
     always @(*) begin
-        Branch=0; MemRead=0; MemtoReg=0; ALUOp=2'b00; memWrite=0; ALUSrc=0; RegWrite=0;
-        
-        // R-type = 01100
+        // Default values to avoid latches
+        Branch = 1'b0; 
+        MemRead = 1'b0; 
+        MemtoReg = 1'b0; 
+        ALUOp = 2'b00; 
+        memWrite = 1'b0; 
+        ALUSrc = 1'b0; 
+        RegWrite = 1'b0;
         Halt = 1'b0;
-        if(instBits == 5'b01100) begin
-            Branch   = 1'b0; 
-            MemRead  = 1'b0; 
-            MemtoReg = 1'b0; 
-            ALUOp    = 2'b10; 
-            memWrite = 1'b0; 
-            ALUSrc   = 1'b0; 
-            RegWrite = 1'b1;
-        end
-        // ADDI = 00100  
-        else if (instBits == 5'b00100) begin
-            Branch   = 1'b0;     
-            MemRead  = 1'b0;   
-           MemtoReg = 1'b0;      
-            ALUOp    = 2'b00;    
-            memWrite = 1'b0;      
-            ALUSrc   = 1'b1;      
-            RegWrite = 1'b1;      
-        end
-
-        // LW = 00000
-        else if(instBits == 5'b00000) begin
-            Branch   = 1'b0; 
-            MemRead  = 1'b1; 
-            MemtoReg = 1'b1; 
-            ALUOp    = 2'b00; 
-            memWrite = 1'b0; 
-            ALUSrc   = 1'b1; 
-            RegWrite = 1'b1;
-        end
-        // SW = 01000
-        else if(instBits == 5'b01000) begin
-            Branch   = 1'b0; 
-            MemRead  = 1'b0; 
-            MemtoReg = 1'b0; // 'x' in your code, but 0 is fine
-            ALUOp    = 2'b00; 
-            memWrite = 1'b1; 
-            ALUSrc   = 1'b1; 
-            RegWrite = 1'b0;
-        end
-        // BEQ = 11000
-        else if(instBits == 5'b11000) begin
-            Branch   = 1'b1; 
-            MemRead  = 1'b0; 
-            MemtoReg = 1'b0; // 'x' in your code
-            ALUOp    = 2'b01; 
-            memWrite = 1'b0; 
-            ALUSrc   = 1'b0; 
-            RegWrite = 1'b0;
-        end
-        else if (instBits == 5'b11100) begin // ECALL and EBREAK
-            Halt = 1'b1;
-        end
-        else if (instBits == 5'b00011) begin // FENCE
-            Halt = 1'b1;
-        end
+        
+        case(instBits)
+            // R-type instructions
+            5'b01100: begin
+                Branch = 1'b0; 
+                MemRead = 1'b0; 
+                MemtoReg = 1'b0; 
+                ALUOp = 2'b10; 
+                memWrite = 1'b0; 
+                ALUSrc = 1'b0; 
+                RegWrite = 1'b1;
+                Halt = 1'b0;
+            end
+            
+            // Load instructions (LW)
+            5'b00000: begin
+                Branch = 1'b0; 
+                MemRead = 1'b1; 
+                MemtoReg = 1'b1; 
+                ALUOp = 2'b00; 
+                memWrite = 1'b0; 
+                ALUSrc = 1'b1; 
+                RegWrite = 1'b1;
+                Halt = 1'b0;
+            end
+            
+            // Store instructions (SW)
+            5'b01000: begin
+                Branch = 1'b0; 
+                MemRead = 1'b0; 
+                MemtoReg = 1'b0; 
+                ALUOp = 2'b00; 
+                memWrite = 1'b1; 
+                ALUSrc = 1'b1; 
+                RegWrite = 1'b0;
+                Halt = 1'b0;
+            end
+            
+            // Branch instructions (BEQ)
+            5'b11000: begin
+                Branch = 1'b1; 
+                MemRead = 1'b0; 
+                MemtoReg = 1'b0; 
+                ALUOp = 2'b01; 
+                memWrite = 1'b0; 
+                ALUSrc = 1'b0; 
+                RegWrite = 1'b0;
+                Halt = 1'b0;
+            end
+            
+            // I-type instructions (ADDI)
+            5'b00100: begin
+                Branch = 1'b0; 
+                MemRead = 1'b0; 
+                MemtoReg = 1'b0; 
+                ALUOp = 2'b00; 
+                memWrite = 1'b0; 
+                ALUSrc = 1'b1; 
+                RegWrite = 1'b1;
+                Halt = 1'b0;
+            end
+            
+            // LUI instruction
+            5'b01101: begin
+                Branch = 1'b0; 
+                MemRead = 1'b0; 
+                MemtoReg = 1'b0; 
+                ALUOp = 2'b10; 
+                memWrite = 1'b0; 
+                ALUSrc = 1'b1; 
+                RegWrite = 1'b1;
+                Halt = 1'b0;
+            end
+            
+            // AUIPC instruction
+            5'b00101: begin
+                Branch = 1'b0; 
+                MemRead = 1'b0; 
+                MemtoReg = 1'b0; 
+                ALUOp = 2'b11; 
+                memWrite = 1'b0; 
+                ALUSrc = 1'b1; 
+                RegWrite = 1'b1;
+                Halt = 1'b0;
+            end
+            
+            // FENCE instruction
+            5'b00011: begin
+                Branch = 1'b0; 
+                MemRead = 1'b0; 
+                MemtoReg = 1'b0; 
+                ALUOp = 2'b00; 
+                memWrite = 1'b0; 
+                ALUSrc = 1'b0; 
+                RegWrite = 1'b0;
+                Halt = 1'b1;
+            end
+            
+            // ECALL and EBREAK
+            5'b11100: begin
+                Branch = 1'b0; 
+                MemRead = 1'b0; 
+                MemtoReg = 1'b0; 
+                ALUOp = 2'b00; 
+                memWrite = 1'b0; 
+                ALUSrc = 1'b0; 
+                RegWrite = 1'b0;
+                Halt = 1'b1;
+            end
+            
+            default: begin
+                Branch = 1'b0; 
+                MemRead = 1'b0; 
+                MemtoReg = 1'b0; 
+                ALUOp = 2'b00; 
+                memWrite = 1'b0; 
+                ALUSrc = 1'b0; 
+                RegWrite = 1'b0;
+                Halt = 1'b0;
+            end
+        endcase
     end
 endmodule
+
 
 
 module RegFile(
