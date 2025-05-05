@@ -68,95 +68,148 @@ module ALU(
     input   wire [4:0]  shamt,
     output  reg  [31:0] r,
     output  wire        cf, zf, vf, sf,
-    input   wire [3:0]  alufn
+    input   wire [4:0]  alufn          // ? was [3:0]
 );
 
     wire [31:0] add, op_b;
     wire [31:0] shift_left, shift_right, shift_right_arith;
+    reg  [63:0] prod;                  // helper for MUL / DIV hi bits
     assign op_b = (~b);
-    
     assign {cf, add} = alufn[0] ? (a + op_b + 1'b1) : (a + b);
-    
+
     assign zf = (add == 0);
     assign sf = add[31];
     assign vf = (a[31] ^ (op_b[31]) ^ add[31] ^ cf);
-    
+
     wire[31:0] sh;
-    assign shift_left = a << shamt;
-    assign shift_right = a >> shamt;
+    assign shift_left        = a <<  shamt;
+    assign shift_right       = a >>  shamt;
     assign shift_right_arith = $signed(a) >>> shamt;
 
     always @ * begin
         r = 0;
         case (alufn)
             // arithmetic
-            4'b0000 : r = add;              // ADD, ADDI
-            4'b0001 : r = add;              // SUB
-            4'b0011 : r = b;                // PASS B
+            5'b00000 : r = add;              // ADD, ADDI
+            5'b00001 : r = add;              // SUB
+            5'b00011 : r = b;                // PASS B
             // logic
-            4'b0100 : r = a | b;            // OR, ORI
-            4'b0101 : r = a & b;            // AND, ANDI
-            4'b0111 : r = a ^ b;            // XOR, XORI
+            5'b00100 : r = a | b;            // OR, ORI
+            5'b00101 : r = a & b;            // AND, ANDI
+            5'b00111 : r = a ^ b;            // XOR, XORI
             // shift
-            4'b1000 : r = sh;               // SLL
-            4'b1001 : r = sh;               // SRL
-            4'b1010 : r = sh;               // SRA
+            5'b01000 : r = sh;               // SLL
+            5'b01001 : r = sh;               // SRL
+            5'b01010 : r = sh;               // SRA
             // slt & sltu
-            4'b1101 : r = {31'b0,(sf != vf)}; // SLT, SLTI
-            4'b1111 : r = {31'b0,(~cf)};      // SLTU, SLTIU
+            5'b01101 : r = {31'b0,(sf != vf)}; // SLT, SLTI
+            5'b01111 : r = {31'b0,(~cf)};      // SLTU, SLTIU
             // additional operations for LUI and AUIPC
-            4'b0010 : r = {b[19:0], 12'b0};   // LUI
-            4'b0110 : r = a + b;              // AUIPC
+            5'b00010 : r = {b[19:0], 12'b0};   // LUI
+            5'b00110 : r = a + b;              // AUIPC
+            // multiply & divide
+            5'b10000 : r = a * b;              // MUL
+            5'b10001 : begin                   // MULH
+                          prod = $signed(a) * $signed(b);
+                          r    = prod[63:32];
+                       end
+            5'b10010 : begin                   // MULHSU
+                          prod = $signed(a) * $unsigned(b);
+                          r    = prod[63:32];
+                       end
+            5'b10011 : begin                   // MULHU
+                          prod = $unsigned(a) * $unsigned(b);
+                          r    = prod[63:32];
+                       end
+            5'b10100 : r = (b==0) ? 32'hFFFF_FFFF : $signed(a) / $signed(b); // DIV
+            5'b10101 : r = (b==0) ? 32'hFFFF_FFFF : a / b;                   // DIVU
+            5'b10110 : r = (b==0) ? a            : $signed(a) % $signed(b);  // REM
+            5'b10111 : r = (b==0) ? a            : a % b;                    // REMU
             // default case
-            default : r = 0;
+            default  : r = 0;
         endcase
     end
 endmodule
+
 
 module ALU_CU(
     input [2:0] inst14_12,
     input [1:0] ALUOp,
     input       inst30,
-    output reg [3:0] ALUsel
+    input       inst25,         
+    output reg [4:0] ALUsel      
 );
     always @(*) begin
         case(ALUOp)
-            2'b00: ALUsel = 4'b0010; // ADD
-            2'b01: ALUsel = 4'b0110; // SUB
+            2'b00: ALUsel = 5'b00000; // ADD
+            2'b01: ALUsel = 5'b00001; // SUB
             2'b10: begin
-                case(inst14_12)
-                    3'b000: ALUsel = (inst30 ? 4'b0110 : 4'b0010); // SUB 
-                    3'b111: ALUsel = 4'b0000; // AND
-                    3'b110: ALUsel = 4'b0001; // OR
-                    default: ALUsel = 4'b1111; 
-                endcase
+                if(inst25) begin
+                    case(inst14_12)
+                        3'b000: ALUsel = 5'b10000; // MUL
+                        3'b001: ALUsel = 5'b10001; // MULH
+                        3'b010: ALUsel = 5'b10010; // MULHSU
+                        3'b011: ALUsel = 5'b10011; // MULHU
+                        3'b100: ALUsel = 5'b10100; // DIV
+                        3'b101: ALUsel = 5'b10101; // DIVU
+                        3'b110: ALUsel = 5'b10110; // REM
+                        3'b111: ALUsel = 5'b10111; // REMU
+                        default: ALUsel = 5'b11111; 
+                    endcase
+                end else begin
+                    case(inst14_12)
+                        3'b000: ALUsel = (inst30 ? 5'b00001 : 5'b00000); // SUB
+                        3'b111: ALUsel = 5'b00101; // AND
+                        3'b110: ALUsel = 5'b00100; // OR
+                        default: ALUsel = 5'b11111; 
+                    endcase
+                end
             end
-            default: ALUsel = 4'b1111;
+            default: ALUsel = 5'b11111;
         endcase
     end
 endmodule
+
 
 
 module ImmGen(
     input  [31:0] inst,
     output reg [31:0] gen_out
 );
-    wire [1:0] opcode_two = inst[6:5];
-
+    // extract immediates based on full 7-bit opcode
     always @(*) begin
-        case (opcode_two)
-            2'b00: // I-type 
+        case (inst[6:0])
+            // I-type: ADDI, LW, JALR, etc.
+            7'b0010011, // ADDI, ORI, ANDI, ...
+            7'b0000011, // LB, LH, LW, ...
+            7'b1100111: // JALR
                 gen_out = {{20{inst[31]}}, inst[31:20]};
-            2'b01: // S-type 
+
+            // S-type: SB, SH, SW
+            7'b0100011: // SW, SH, SB
                 gen_out = {{20{inst[31]}}, inst[31:25], inst[11:7]};
-            2'b11: // B-type 
+
+            // B-type: BEQ, BNE, BLT, BGE, ...
+            7'b1100011: // BEQ, BNE, BLT, BGE, BLTU, BGEU
                 gen_out = {{20{inst[31]}}, inst[31], inst[7],
                            inst[30:25], inst[11:8]};
+
+            // U-type: LUI, AUIPC
+            7'b0110111, // LUI
+            7'b0010111: // AUIPC
+                gen_out = {inst[31:12], 12'b0};
+
+            // J-type: JAL
+            7'b1101111: // JAL
+                gen_out = {{inst[31]}, inst[19:12], inst[20],
+                           inst[30:21], 1'b0};
+
             default:
                 gen_out = 32'b0;
         endcase
     end
 endmodule
+
 
 module CU(
     input [4:0] instBits,
@@ -166,12 +219,13 @@ module CU(
     output reg [1:0] ALUOp, 
     output reg  memWrite, 
     output reg  ALUSrc, 
-    output reg  RegWrite
+    output reg  RegWrite, Halt
 );
     always @(*) begin
         Branch=0; MemRead=0; MemtoReg=0; ALUOp=2'b00; memWrite=0; ALUSrc=0; RegWrite=0;
         
         // R-type = 01100
+        Halt = 1'b0;
         if(instBits == 5'b01100) begin
             Branch   = 1'b0; 
             MemRead  = 1'b0; 
@@ -181,6 +235,17 @@ module CU(
             ALUSrc   = 1'b0; 
             RegWrite = 1'b1;
         end
+        // ADDI = 00100  
+        else if (instBits == 5'b00100) begin
+            Branch   = 1'b0;     
+            MemRead  = 1'b0;   
+           MemtoReg = 1'b0;      
+            ALUOp    = 2'b00;    
+            memWrite = 1'b0;      
+            ALUSrc   = 1'b1;      
+            RegWrite = 1'b1;      
+        end
+
         // LW = 00000
         else if(instBits == 5'b00000) begin
             Branch   = 1'b0; 
@@ -210,6 +275,12 @@ module CU(
             memWrite = 1'b0; 
             ALUSrc   = 1'b0; 
             RegWrite = 1'b0;
+        end
+        else if (instBits == 5'b11100) begin // ECALL and EBREAK
+            Halt = 1'b1;
+        end
+        else if (instBits == 5'b00011) begin // FENCE
+            Halt = 1'b1;
         end
     end
 endmodule
@@ -325,69 +396,158 @@ module Four_Digit_Seven_Segment_Driver_Optimized (
 endmodule
 
 
-module DataMemory(
+module Memory(
     input clk,
     input MemRead,
     input MemWrite,
-    input [5:0] addr,
-    input [31:0] data_in,
-    output reg [31:0] data_out
+    input [2:0] funct3,      // Instruction type (lb, lh, lw, etc.)
+    input [31:0] addr,       // Full 32-bit address
+    input [31:0] data_in,    // Data to write
+    output reg [31:0] data_out // Data read
 );
-    reg [31:0] mem [0:63];
-
-    always @(posedge clk) begin
+    reg [7:0] mem [0:255];   // Byte-addressable memory
+    wire [1:0] byte_offset = addr[1:0];
+    
+    // Read logic
+    always @(*) begin
+        if(MemRead) begin
+            case(funct3)
+                3'b000: begin // lb - load byte
+                    case(byte_offset)
+                        2'b00: data_out = {{24{mem[addr][7]}}, mem[addr]};
+                        2'b01: data_out = {{24{mem[addr][7]}}, mem[addr]};
+                        2'b10: data_out = {{24{mem[addr][7]}}, mem[addr]};
+                        2'b11: data_out = {{24{mem[addr][7]}}, mem[addr]};
+                    endcase
+                end
+                3'b001: begin // lh - load halfword
+                    case(byte_offset)
+                        2'b00: data_out = {{16{mem[addr+1][7]}}, mem[addr+1], mem[addr]};
+                        2'b10: data_out = {{16{mem[addr+1][7]}}, mem[addr+1], mem[addr]};
+                        default: data_out = 32'b0; // Unaligned access
+                    endcase
+                end
+                3'b010: begin // lw - load word
+                    if(byte_offset == 2'b00)
+                        data_out = {mem[addr+3], mem[addr+2], mem[addr+1], mem[addr]};
+                    else
+                        data_out = 32'b0; // Unaligned access
+                end
+                3'b100: begin // lbu - load byte unsigned
+                    case(byte_offset)
+                        2'b00: data_out = {24'b0, mem[addr]};
+                        2'b01: data_out = {24'b0, mem[addr]};
+                        2'b10: data_out = {24'b0, mem[addr]};
+                        2'b11: data_out = {24'b0, mem[addr]};
+                    endcase
+                end
+                3'b101: begin // lhu - load halfword unsigned
+                    case(byte_offset)
+                        2'b00: data_out = {16'b0, mem[addr+1], mem[addr]};
+                        2'b10: data_out = {16'b0, mem[addr+1], mem[addr]};
+                        default: data_out = 32'b0; // Unaligned access
+                    endcase
+                end
+                default: begin
+                    // For instruction fetch or when funct3 is not specified
+                    // Always fetch a word (4 bytes) for instructions
+                    if(byte_offset == 2'b00)
+                        data_out = {mem[addr+3], mem[addr+2], mem[addr+1], mem[addr]};
+                    else
+                        data_out = 32'b0; // Unaligned access
+                end
+            endcase
+        end else begin
+            // Even when MemRead is not active, we need to read instructions
+            // This handles the instruction fetch path
+            data_out = {mem[addr+3], mem[addr+2], mem[addr+1], mem[addr]};
+        end
+    end
+    
+    // Write logic
+    always @(*) begin
         if(MemWrite) begin
-            mem[addr] <= data_in;
+            case(funct3)
+                3'b000: begin // sb - store byte
+                    mem[addr] <= data_in[7:0];
+                end
+                3'b001: begin // sh - store halfword
+                    if(byte_offset == 2'b00 || byte_offset == 2'b10) begin
+                        mem[addr] <= data_in[7:0];
+                        mem[addr+1] <= data_in[15:8];
+                    end
+                end
+                3'b010: begin // sw - store word
+                    if(byte_offset == 2'b00) begin
+                        mem[addr] <= data_in[7:0];
+                        mem[addr+1] <= data_in[15:8];
+                        mem[addr+2] <= data_in[23:16];
+                        mem[addr+3] <= data_in[31:24];
+                    end
+                end
+                default: begin // Default to word store
+                    if(byte_offset == 2'b00) begin
+                        mem[addr] <= data_in[7:0];
+                        mem[addr+1] <= data_in[15:8];
+                        mem[addr+2] <= data_in[23:16];
+                        mem[addr+3] <= data_in[31:24];
+                    end
+                end
+            endcase
         end
     end
 
-    always @(*) begin
-        if(MemRead)
-            data_out = mem[addr];
-        else
-            data_out = 32'b0;
-    end
-
     initial begin
-        mem[0] = 32'd17;  
-        mem[1] = 32'd9;   
-        mem[2] = 32'd25;  
+        // Initialize memory with test data and program
+        // Data values (byte by byte in little-endian)
+        mem[80] = 8'd100;   // Value 100 at address 0x50
+        mem[81] = 8'd0;
+        mem[82] = 8'd0;
+        mem[83] = 8'd0;
+    
+        mem[84] = 8'd20;    // Value 20 at address 0x54
+        mem[85] = 8'd0;
+        mem[86] = 8'd0;
+        mem[87] = 8'd0;
+    
+        // Program (machine code instructions)
+        // lw x10, 5(x0)
+        mem[0]  = 8'b00000011;
+        mem[1]  = 8'b00000101;
+        mem[2]  = 8'b01010000;
+        mem[3]  = 8'b00000000;
+    
+        // beq x0,x0,8
+        mem[4]  = 8'b01100011;
+        mem[5]  = 8'b00000100;
+        mem[6]  = 8'b00000000;
+        mem[7]  = 8'b00000000;
+    
+        // add x7, x5, x6 - x7 = x5 + x6 WRONG
+        mem[8]  = 8'b00110011;
+        mem[9]  = 8'b10100110;
+        mem[10] = 8'b00110100;
+        mem[11] = 8'b00000000;
+    
+        // sub x8, x7, x6 - x8 = x7 - x6 WRONG
+        mem[12] = 8'b00110011;
+        mem[13] = 8'b00000111;
+        mem[14] = 8'b00111000;
+        mem[15] = 8'b01000000;
+    
+        // sw x8, 88(x0) - Store result at 0x58 WRONG
+        mem[16] = 8'b00100011;
+        mem[17] = 8'b00001000;
+        mem[18] = 8'b10010000;
+        mem[19] = 8'b00000000;
+    
+        // ecall (just placeholder)
+        mem[20] = 8'b00001111;
+        mem[21] = 8'b00000000;
+        mem[22] = 8'b00000000;
+        mem[23] = 8'b00000000;
     end
-endmodule
 
-
-module InstructionMemory(
-    input  [31:0] addr, 
-    output [31:0] data_out
-);
-    reg [31:0] mem [0:63];
-
-    assign data_out = mem[addr[7:2]]; 
-
-    initial begin
-    mem[0]  = 32'b000000000000_00000_010_00001_0000011; // lw x1, 0(x0)
- 
-    mem[1]  = 32'b000000000100_00000_010_00010_0000011; // lw x2, 4(x0)
-  
-    mem[2]  = 32'b000000001000_00000_010_00011_0000011; // lw x3, 8(x0)
-    mem[3]  = 32'b0000000_00010_00001_110_00100_0110011; // or x4, x1, x2
-    mem[4]  = 32'b0_000001_00011_00100_000_0000_0_1100011; // beq x4, x3, 16
-    mem[5]=32'b0000000_00000_00000_000_00000_0110011 ; //add x0, x0, x0
-    mem[6]=32'b0000000_00000_00000_000_00000_0110011 ; //add x0, x0, x0
-    mem[7]=32'b0000000_00000_00000_000_00000_0110011 ; //add x0, x0, x0
-    mem[8]  = 32'b0000000_00010_00001_000_00011_0110011; // add x3, x1, x2
-    mem[9]=32'b0000000_00000_00000_000_00000_0110011 ; //add x0, x0, x0
-    mem[10]=32'b0000000_00000_00000_000_00000_0110011 ; //add x0, x0, x0/
-    mem[11]=32'b0000000_00000_00000_000_00000_0110011 ; //add x0, x0, x0
-    mem[12]  = 32'b0000000_00010_00011_000_00101_0110011; // add x5, x3, x2
-    mem[13]  = 32'b0000000_00101_00000_010_01100_0100011; // sw x5, 12(x0)
-    mem[14]  = 32'b000000001100_00000_010_00110_0000011; // lw x6, 12(x0)
-    mem[15]  = 32'b0000000_00001_00110_111_00111_0110011; // and x7, x6, x1
-    mem[16] = 32'b0100000_00010_00001_000_01000_0110011; // sub x8, x1, x2
-    mem[17] = 32'b0000000_00010_00001_000_00000_0110011; // add x0, x1, x2
-    mem[18] = 32'b0000000_00001_00000_000_01001_0110011; // add x9, x0, x1
-
-    end
 endmodule
 
 module forwardingUnit(
@@ -442,6 +602,7 @@ module HazardDetection(
     end
 endmodule
 
+
 module BranchingUnit(
     input [2:0] funct3, input cf, zf, vf, sf, output reg Branch
     );
@@ -479,24 +640,29 @@ module RISCV_pipeline(
     // IF Stage
     reg  [31:0] PC_address; 
     wire [31:0] PC_next;
-    wire Stall;
+    wire Stall, Halt;
+    reg Halt_latched;
+    wire EX_MEM_MemRead;
+    wire EX_MEM_MemWrite;
+    wire branch_taken;
     always @(posedge clk) begin
         if (reset) 
             PC_address <= 32'h0000_0000;  
         else begin
-            if(!Stall) begin
+            if(!Stall && !Halt_latched && !EX_MEM_MemRead && !EX_MEM_MemWrite) begin
                 PC_address <= PC_next;
             end
         end
     end
-    
-    wire [31:0] instruction;
-    InstructionMemory instrMem(
-        .addr(PC_address), 
-        .data_out(instruction)
-    );
 
-    // PC + 4
+    always @(posedge clk or posedge reset) begin
+        if (reset)
+            Halt_latched <= 1'b0;
+        else if (Halt)
+            Halt_latched <= 1'b1;
+    end
+    wire [31:0] instruction;
+
     wire [31:0] pc_plus_4;
     RCA #(32) adder_pc_plus_4(
         .x   (PC_address),
@@ -509,11 +675,12 @@ module RISCV_pipeline(
     // IF/ID register
     wire [31:0] IF_ID_PC;
     wire [31:0] IF_ID_Inst;
+    wire [31:0] instructionSent = branch_taken ? 32'b00000000000000000000000000110011: instruction; // add x0, x0, x0
     NBitRegister #(64) IF_ID (
         .clk  (clk),
         .rst  (reset),
-        .load (!Stall),
-        .D    ({PC_address, instruction}),
+        .load (!Stall && !EX_MEM_MemRead && !EX_MEM_MemWrite),
+        .D    ({PC_address, instructionSent}),
         .Q    ({IF_ID_PC, IF_ID_Inst})
     );
 
@@ -530,7 +697,8 @@ module RISCV_pipeline(
         .ALUOp    (ALUOp), 
         .memWrite (memWrite), 
         .ALUSrc   (ALUSrc), 
-        .RegWrite (RegWrite)
+        .RegWrite (RegWrite),
+        .Halt(Halt)
     );
 
     wire [31:0] readData1, readData2;
@@ -556,31 +724,31 @@ module RISCV_pipeline(
     );
     
     
-    wire [7:0] ID_stage_ctrl = Stall ? 8'b0 : {
+    wire [7:0] ID_stage_ctrl = Stall || Halt_latched || EX_MEM_MemRead || EX_MEM_MemWrite || branch_taken ? 8'b0 : {
         Branch, MemRead, MemtoReg, ALUOp, memWrite, ALUSrc, RegWrite
     };
 
     wire [7:0]  ID_EX_Ctrl;
     wire [31:0] ID_EX_PC;
     wire [31:0] ID_EX_RegR1, ID_EX_RegR2, ID_EX_Imm;
-    wire [3:0]  ID_EX_Func;
+    wire [4:0]  ID_EX_Func;
     wire [4:0]  ID_EX_Rs1, ID_EX_Rs2, ID_EX_Rd;
 
-    NBitRegister #(155) ID_EX (
+    NBitRegister #(156) ID_EX (
         .clk  (clk),
         .rst  (reset),
         .load (1'b1),
         .D    ({
-                ID_stage_ctrl,
-                IF_ID_PC,
-                readData1,
-                readData2,
-                immediate,
-                {IF_ID_Inst[30], IF_ID_Inst[14:12]},
-                IF_ID_Inst[19:15],
-                IF_ID_Inst[24:20],
-                IF_ID_Inst[11:7]
-               }),
+             ID_stage_ctrl,
+             IF_ID_PC,
+             readData1,
+             readData2,
+             immediate,
+             {IF_ID_Inst[30], IF_ID_Inst[14:12], IF_ID_Inst[25]}, // +inst25
+              IF_ID_Inst[19:15],
+             IF_ID_Inst[24:20],
+              IF_ID_Inst[11:7]
+                       }),
         .Q    ({
                 ID_EX_Ctrl,
                 ID_EX_PC,
@@ -603,11 +771,12 @@ module RISCV_pipeline(
     wire        ID_EX_RegWrite  = ID_EX_Ctrl[0];
 
     // ALU control
-    wire [3:0] ALUsel;
+    wire [4:0] ALUsel;
     ALU_CU aluControl(
-        .inst14_12(ID_EX_Func[2:0]),
+        .inst14_12(ID_EX_Func[3:1]),
         .ALUOp    (ID_EX_ALUOp),
-        .inst30   (ID_EX_Func[3]),
+        .inst30   (ID_EX_Func[4]),
+        .inst25 (ID_EX_Func[0]),
         .ALUsel   (ALUsel)
     );
 
@@ -620,18 +789,17 @@ module RISCV_pipeline(
     wire [31:0] alu_result;
     wire zeroFlag, cFlag, vFlag, sFlag;
     
-    ALU #(32) mainALU(
-        .a(alu_input_A),
-        .b(alu_in2),
-        .alufn(ALUsel),
-        .r(alu_result),
-        .zf(zeroFlag),
-        .cf(cFlag),
-        .vf(vFlag),
-        .sf(sFlag),
-        .shamt(ID_EX_Rs2)
+        ALU mainALU(
+        .a     (alu_input_A),
+        .b     (alu_in2),
+        .shamt (ID_EX_Rs2),
+        .r     (alu_result),
+        .zf    (zeroFlag),
+        .cf    (cFlag),
+        .vf    (vFlag),
+        .sf    (sFlag),
+        .alufn (ALUsel)              
     );
-
     // Compute branch target = ID_EX_PC + (Imm << 1)
     wire [31:0] imm_shifted;
     NBitShiftLeft #(32) myShifter(
@@ -698,24 +866,30 @@ module RISCV_pipeline(
 
     // MEM Stage
     wire EX_MEM_Branch   = EX_MEM_Ctrl[4];
-    wire EX_MEM_MemRead  = EX_MEM_Ctrl[3];
+    assign EX_MEM_MemRead  = EX_MEM_Ctrl[3];
     wire EX_MEM_MemtoReg = EX_MEM_Ctrl[2];
-    wire EX_MEM_MemWrite = EX_MEM_Ctrl[1];
+    assign EX_MEM_MemWrite = EX_MEM_Ctrl[1];
     wire EX_MEM_RegWrite = EX_MEM_Ctrl[0];
 
     wire [31:0] dataOut;
-    DataMemory mem(
+    wire [31:0] mem_out;
+    Memory mem(
         .clk      (clk),
         .MemRead  (EX_MEM_MemRead),
         .MemWrite (EX_MEM_MemWrite),
-        .addr     (EX_MEM_ALU_out[7:2]),
+        .addr     (EX_MEM_MemWrite || EX_MEM_MemRead ? EX_MEM_ALU_out : PC_address),
         .data_in  (EX_MEM_RegR2),
-        .data_out (dataOut)
+        .data_out (mem_out),
+        .funct3(EX_MEM_funct3)
     );
-
+    
+    wire is_data_access = EX_MEM_MemWrite || EX_MEM_MemRead;
+    assign dataOut = is_data_access ? mem_out : 32'b0;
+    assign instruction = is_data_access || Halt_latched ? instruction : mem_out;
+    
     wire branchOutput;
     BranchingUnit myBranchUnit(.funct3(EX_MEM_funct3), .cf(EX_MEM_cFlag), .zf(EX_MEM_Zero), .vf(EX_MEM_vFlag), .sf(EX_MEM_sFlag), .Branch(branchOutput));
-    wire branch_taken = EX_MEM_Branch && branchOutput;
+    assign branch_taken = EX_MEM_Branch && branchOutput;
     NBitMux2x1 #(32) mux_nextPC(
         .A(pc_plus_4),
         .B(EX_MEM_BranchAddOut),
@@ -777,21 +951,18 @@ module RISCV_pipeline(
         .forwardB(forwardB)
     );
 
-    
     HazardDetection myHazardDetector (
-        .IF_ID_RegisterRs1(IF_ID_Inst[19:15]),
-        .IF_ID_RegisterRs2(IF_ID_Inst[24:20]),
-        .ID_EX_RegisterRd(ID_EX_Rd),
-        .ID_EX_MemRead(ID_EX_MemRead),
-        .stall(Stall)
-    );
+            .IF_ID_RegisterRs1(IF_ID_Inst[19:15]),
+            .IF_ID_RegisterRs2(IF_ID_Inst[24:20]),
+            .ID_EX_RegisterRd(ID_EX_Rd),
+            .ID_EX_MemRead(ID_EX_MemRead),
+            .stall(Stall)
+        );
     
     assign alu_input_A = (forwardA == 2'b00) ? ID_EX_RegR1 :
                          (forwardA == 2'b10) ? EX_MEM_ALU_out :
                          (forwardA == 2'b01) ? writeBackData : 
                          ID_EX_RegR1;
-    
-    // For ALU input B (using ForwardB)
 
     assign alu_input_B = (forwardB == 2'b00) ? ID_EX_RegR2 :
                          (forwardB == 2'b10) ? EX_MEM_ALU_out :
