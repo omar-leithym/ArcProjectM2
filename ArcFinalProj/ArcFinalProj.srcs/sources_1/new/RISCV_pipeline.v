@@ -178,6 +178,14 @@ module ALU_CU(
                     endcase
                 end
             end
+            // For JAL/JALR (ALUOp = 2'b11)
+            2'b11: begin
+                if (inst14_12 == 3'b000) // JALR
+                    ALUsel = 5'b00000;   // Use ADD for rs1+imm
+                else                     // JAL
+                    ALUsel = 5'b00000;   // Use ADD for PC+imm
+            end
+
             
             // Default case
             default: ALUsel = 5'b11111;
@@ -358,6 +366,54 @@ module CU(
                 Halt = 1'b1;
             end
             
+            // JAL instruction (opcode 1101111)
+            5'b11011: begin
+                Branch = 1'b1;     // Treat as branch for PC control
+                MemRead = 1'b0;
+                MemtoReg = 1'b0;
+                ALUOp = 2'b11;     // Special ALUOp for JAL
+                memWrite = 1'b0;
+                ALUSrc = 1'b1;     // Use immediate
+                RegWrite = 1'b1;   // Write return address to rd
+                Halt = 1'b0;
+            end
+            
+            // JALR instruction (opcode 1100111)
+            5'b11001: begin
+                Branch = 1'b1;     // Treat as branch for PC control
+                MemRead = 1'b0;
+                MemtoReg = 1'b0;
+                ALUOp = 2'b11;     // Special ALUOp for JALR
+                memWrite = 1'b0;
+                ALUSrc = 1'b1;     // Use immediate
+                RegWrite = 1'b1;   // Write return address to rd
+                Halt = 1'b0;
+            end
+            
+            // JAL instruction (opcode 1101111)
+            5'b11011: begin
+                Branch = 1'b1;     // Treat as branch for PC control
+                MemRead = 1'b0;
+                MemtoReg = 1'b0;
+                ALUOp = 2'b11;     // Special ALUOp for JAL
+                memWrite = 1'b0;
+                ALUSrc = 1'b1;     // Use immediate
+                RegWrite = 1'b1;   // Write return address to rd
+                Halt = 1'b0;
+            end
+            
+            // JALR instruction (opcode 1100111)
+            5'b11001: begin
+                Branch = 1'b1;     // Treat as branch for PC control
+                MemRead = 1'b0;
+                MemtoReg = 1'b0;
+                ALUOp = 2'b11;     // Special ALUOp for JALR
+                memWrite = 1'b0;
+                ALUSrc = 1'b1;     // Use immediate
+                RegWrite = 1'b1;   // Write return address to rd
+                Halt = 1'b0;
+            end
+         
             default: begin
                 Branch = 1'b0; 
                 MemRead = 1'b0; 
@@ -709,6 +765,11 @@ module BranchingUnit(
                 Branch = ~cf;
             3'b111: // bgeu
                 Branch = cf;
+            // In BranchingUnit, add cases for JAL/JALR
+            3'b011: // JAL
+                Branch = 1'b1;  // Always take the jump
+            3'b100: // JALR
+                Branch = 1'b1;  // Always take the jump
             default: Branch = 1'b0;
         endcase
     end
@@ -905,7 +966,7 @@ module RISCV_pipeline(
     );
 
     // EX/MEM control = [Branch,MemRead,MemtoReg,MemWrite,RegWrite]
-    wire [4:0] EX_stage_ctrl = {
+    wire [4:0] EX_stage_ctrl = branch_taken ? 5'b0 : {
         ID_EX_Branch,
         ID_EX_MemRead,
         ID_EX_MemtoReg,
@@ -978,12 +1039,25 @@ module RISCV_pipeline(
     wire branchOutput;
     BranchingUnit myBranchUnit(.funct3(EX_MEM_funct3), .cf(EX_MEM_cFlag), .zf(EX_MEM_Zero), .vf(EX_MEM_vFlag), .sf(EX_MEM_sFlag), .Branch(branchOutput));
     assign branch_taken = EX_MEM_Branch && branchOutput;
+    
+    // Determine next PC value
+    wire is_jalr = (ID_EX_Ctrl[4:3] == 2'b11) && (ID_EX_Func[3:1] == 3'b000);
+    wire [31:0] jalr_target = alu_result & 32'hFFFFFFFE; // Clear LSB for JALR
+    
     NBitMux2x1 #(32) mux_nextPC(
         .A(pc_plus_4),
-        .B(EX_MEM_BranchAddOut),
-        .S(branch_taken),
+        .B(is_jalr ? jalr_target : EX_MEM_BranchAddOut),
+        .S(branch_taken || is_jalr),
         .C(PC_next)
     );
+
+    
+//    NBitMux2x1 #(32) mux_nextPC(
+//        .A(pc_plus_4),
+//        .B(EX_MEM_BranchAddOut),
+//        .S(branch_taken),
+//        .C(PC_next)
+//    );
 
     // MEM/WB ctrl = [RegWrite, MemtoReg]
     wire [1:0] MEM_stage_ctrl = {
@@ -1047,10 +1121,17 @@ module RISCV_pipeline(
             .stall(Stall)
         );
     
-    assign alu_input_A = (forwardA == 2'b00) ? ID_EX_RegR1 :
-                         (forwardA == 2'b10) ? EX_MEM_ALU_out :
-                         (forwardA == 2'b01) ? writeBackData : 
-                         ID_EX_RegR1;
+// Create a signal for the return address (PC+4)
+        wire [31:0] return_address = ID_EX_PC + 4;
+        
+        // Modify ALU input selection for JAL/JALR
+        wire is_jump = (ID_EX_ALUOp == 2'b11);
+        assign alu_input_A = is_jump ? ID_EX_PC : 
+                            (forwardA == 2'b00) ? ID_EX_RegR1 :
+                            (forwardA == 2'b10) ? EX_MEM_ALU_out :
+                            (forwardA == 2'b01) ? writeBackData : 
+                            ID_EX_RegR1;
+
 
     assign alu_input_B = (forwardB == 2'b00) ? ID_EX_RegR2 :
                          (forwardB == 2'b10) ? EX_MEM_ALU_out :
